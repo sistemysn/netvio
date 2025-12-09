@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    <title>NetVio</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              background: '#020617', /* Slate 950 - Derin Kurumsal Arkaplan */
+              surface: '#0f172a',    /* Slate 900 - Panel Arkaplanı */
+              surfaceHighlight: '#1e293b', /* Slate 800 - Vurgular */
+              primary: '#3b82f6',    /* Blue 500 - Kurumsal Mavi */
+              primaryHover: '#2563eb', /* Blue 600 */
+              danger: '#ef4444',
+              success: '#10b981',    /* Emerald 500 */
+              textMain: '#f8fafc',   /* Slate 50 */
+              textMuted: '#94a3b8',  /* Slate 400 */
+            },
+            fontFamily: {
+              sans: ['Inter', 'system-ui', 'sans-serif'],
+            }
+          }
+        }
+      }
+    </script>
+
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: #020617; }
+      ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: #475569; }
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      
+      body, html { height: 100%; overflow: hidden; background-color: #020617; touch-action: manipulation; font-family: 'Inter', sans-serif; }
+      
+      .video-slot { transition: all 0.2s ease-in-out; }
+      .video-slot.selected { 
+        border: 2px solid #3b82f6; 
+        box-shadow: 0 0 25px rgba(59, 130, 246, 0.4);
+        z-index: 10; 
+      }
+
+      /* Glassmorphism Utilities */
+      .glass {
+        background: rgba(15, 23, 42, 0.7);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      }
+      
+      .grid-animate { animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+      @keyframes fadeIn { from { opacity: 0; transform: scale(0.99); } to { opacity: 1; transform: scale(1); } }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.2.0",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "lucide-react": "https://esm.sh/lucide-react@0.263.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "react/": "https://aistudiocdn.com/react@^19.2.1/"
+  }
+}
+</script>
+</head>
+<body class="bg-background text-textMain h-full w-full overflow-hidden select-none font-sans antialiased">
+    <div id="root" class="h-full w-full flex flex-col"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useRef, useMemo } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { 
+            Tv, Settings, Menu, X, Plus, RotateCcw, 
+            Youtube, MonitorPlay, Trash2, Search, 
+            Check, Grid, AlertCircle, RefreshCw, Edit2, Save,
+            Maximize, Minimize, LayoutGrid, Signal
+        } from 'lucide-react';
+
+        // --- VARSAYILAN KANALLAR ---
+        const DEFAULT_CHANNELS = [
+            { id: 'ntv', title: 'NTV', url: 'https://www.youtube.com/watch?v=pqq5c6k70kk', type: 'youtube' },
+            { id: 'trthaber', title: 'TRT Haber', url: 'https://tv-trthaber.medya.trt.com.tr/master.m3u8', type: 'hls' },
+            { id: 'cnn', title: 'CNN Türk', url: 'https://www.youtube.com/watch?v=6N8_r2uwLEc', type: 'youtube' },
+            { id: 'haberturk', title: 'Habertürk', url: 'https://www.youtube.com/watch?v=RNVNlJSUFoE', type: 'youtube' },
+            { id: 'sozcu', title: 'Sözcü TV', url: 'https://www.youtube.com/watch?v=ztmY_cCtUl0', type: 'youtube' },
+            { id: 'halktv', title: 'Halk TV', url: 'https://www.youtube.com/watch?v=VBU0QX6brew', type: 'youtube' },
+            { id: 'tele1', title: 'TELE 1', url: 'https://www.youtube.com/watch?v=elQyWeeDCYU', type: 'youtube' },
+            { id: 'kanal7y', title: 'Kanal 7Y', url: 'https://www.youtube.com/watch?v=6iHl9liRsy4', type: 'youtube' },
+            { id: 'haberglobal', title: 'Haber Global', url: 'https://www.youtube.com/watch?v=EqoCJ8BPxtE', type: 'youtube' },
+            { id: 'tv100', title: 'TV 100', url: 'https://www.youtube.com/watch?v=6g_DvD8e2T0', type: 'youtube' },
+            { id: 'ekoltv', title: 'EKOL TV', url: 'https://ekoltv-live.ercdn.net/ekoltv/ekoltv.m3u8', type: 'hls' },
+            { id: 'lider', title: 'Lider Tv', url: 'https://www.youtube.com/watch?v=2cj2ZHbGGbc', type: 'youtube' },
+            { id: 'tgrt', title: 'TGRT Haber', url: 'https://canli.tgrthaber.com/tgrt.m3u8', type: 'hls' },
+            { id: 'cnbce', title: 'CNBC-e', url: 'https://www.youtube.com/watch?v=ziYwt0jF1p4', type: 'youtube' },
+            { id: 'bloomberght', title: 'Bloomberg HT', url: 'https://tv.ensonhaber.com/bloomberght/bloomberght.m3u8', type: 'hls' },
+            { id: 'ahaber', title: 'A Haber', url: 'https://www.youtube.com/watch?v=v3C8qJ0S4SI', type: 'youtube' },
+            { id: '24tv', title: '24 TV', url: 'https://tv.ensonhaber.com/tv24/tv24.m3u8', type: 'hls' },
+            { id: 'ulke', title: 'Ülke TV', url: 'https://mn-nl.mncdn.com/ulketv/ulketv.m3u8', type: 'hls' },
+            { id: 'tvnet', title: 'TVNET', url: 'https://mn-nl.mncdn.com/tvnet/tvnet/playlist.m3u8', type: 'hls' },
+            { id: 'trtspor', title: 'TRT Spor', url: 'https://tv-trtspor1.medya.trt.com.tr/master.m3u8', type: 'hls' },
+            { id: 'flash', title: 'Flash Haber', url: 'https://www.youtube.com/watch?v=5BN4UOUVOFw', type: 'youtube' },
+            { id: 'kanal7', title: 'Kanal 7', url: 'https://kanal7-live.ercdn.net/kanal7/kanal7.m3u8', type: 'hls' },
+            { id: 'tv8', title: 'TV 8', url: 'https://www.youtube.com/watch?v=DbpYcT4s3Yw', type: 'youtube' },
+            { id: 'beyaztv', title: 'Beyaz TV', url: 'https://www.youtube.com/watch?v=A3y1Wz2tM78', type: 'youtube' },
+            { id: '360tv', title: '360 TV', url: 'https://tv.ensonhaber.com/tv360/tv360.m3u8', type: 'hls' },
+            { id: 'anka', title: 'Anka Hbr', url: 'https://www.youtube.com/watch?v=AEMS1vf_nuA', type: 'youtube' },
+            { id: 'muzik', title: 'YMüzik', url: 'https://www.youtube.com/watch?v=EmdtE7sRMSY', type: 'youtube' },
+        ];
+
+        // --- YARDIMCI FONKSİYONLAR ---
+        const getYoutubeId = (url) => {
+            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+            const match = url.match(regExp);
+            return (match && match[2].length === 11) ? match[2] : null;
+        };
+        const isYoutubeUrl = (url) => url.includes('youtube.com') || url.includes('youtu.be');
+        const isHlsUrl = (url) => url.includes('.m3u8');
+        const normalizeUrl = (input) => {
+            const trimmed = input.trim();
+            if (trimmed.startsWith('<iframe')) {
+                const srcMatch = trimmed.match(/src=["'](.*?)["']/);
+                if (srcMatch && srcMatch[1]) return srcMatch[1];
+            }
+            return trimmed;
+        };
+        const generateId = () => Math.random().toString(36).substr(2, 9);
+
+        // --- BİLEŞENLER ---
+
+        const Button = ({ children, variant = 'primary', size = 'md', className = '', ...props }) => {
+            const variants = {
+                primary: "bg-primary hover:bg-primaryHover text-white shadow-md shadow-primary/20 border border-primary/20",
+                secondary: "bg-surfaceHighlight hover:bg-slate-700 text-textMain border border-slate-700",
+                danger: "bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20",
+                success: "bg-success hover:bg-emerald-600 text-white shadow-md shadow-emerald-500/20",
+                ghost: "hover:bg-slate-800 text-textMuted hover:text-white"
+            };
+            const sizes = { sm: "h-8 px-3 text-xs", md: "h-9 px-4 py-1.5 text-sm" };
+            return <button className={`inline-flex items-center justify-center rounded-md font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${variants[variant]} ${sizes[size]} ${className}`} {...props}>{children}</button>;
+        };
+
+        const StreamFrame = ({ stream, onRemove }) => {
+            const videoRef = useRef(null);
+            useEffect(() => {
+                let hls;
+                if (stream.type === 'hls' && videoRef.current) {
+                    if (window.Hls && window.Hls.isSupported()) {
+                        hls = new window.Hls({ capLevelToPlayerSize: true, startLevel: -1 });
+                        hls.loadSource(stream.url);
+                        hls.attachMedia(videoRef.current);
+                    } else if (videoRef.current.canPlayType("application/vnd.apple.mpegurl")) {
+                        videoRef.current.src = stream.url;
+                    }
+                }
+                return () => { if (hls) hls.destroy(); };
+            }, [stream]);
+
+            const youtubeEmbedUrl = useMemo(() => {
+                if (stream.type === 'youtube') {
+                    const videoId = getYoutubeId(stream.url);
+                    return videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=1&playsinline=1&rel=0` : null;
+                }
+                return null;
+            }, [stream.url]);
+
+            const renderContent = () => {
+                if (stream.type === 'youtube') {
+                    if (!youtubeEmbedUrl) return <div className="flex flex-col items-center justify-center h-full text-slate-500 bg-slate-900"><AlertCircle className="mb-2" /><span className="text-xs">Video Yüklenemedi</span></div>;
+                    return <iframe src={youtubeEmbedUrl} className="w-full h-full" title={stream.title} frameBorder="0" allow="autoplay; encrypted-media" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" />;
+                }
+                if (stream.type === 'hls') return <video ref={videoRef} className="w-full h-full object-cover bg-black" controls autoPlay muted playsInline />;
+                return <iframe src={stream.url} className="w-full h-full" title={stream.title} frameBorder="0" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" />;
+            };
+
+            return (
+                <div className="w-full h-full relative group bg-black">
+                    <div className="absolute top-0 left-0 right-0 p-2 opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-b from-black/90 to-transparent z-20 flex justify-between items-start pointer-events-none">
+                        <span className="text-white text-xs font-semibold px-2 py-1 bg-black/60 rounded backdrop-blur-md border border-white/10">{stream.title}</span>
+                        <button onClick={(e) => { e.stopPropagation(); onRemove(); }} className="pointer-events-auto bg-red-600/80 hover:bg-red-600 text-white p-1.5 rounded-md shadow-lg transition-transform hover:scale-105"><X className="w-3 h-3" /></button>
+                    </div>
+                    {renderContent()}
+                </div>
+            );
+        };
+
+        const SettingsModal = ({ streams, setStreams, onClose, onReset }) => {
+            const [newUrl, setNewUrl] = useState('');
+            const [newTitle, setNewTitle] = useState('');
+            const [editingId, setEditingId] = useState(null); 
+
+            const handleSave = () => {
+                if (!newUrl) return;
+                const processedUrl = normalizeUrl(newUrl);
+                let type = 'web';
+                if (isYoutubeUrl(processedUrl)) type = 'youtube';
+                else if (isHlsUrl(processedUrl)) type = 'hls';
+
+                if (editingId) {
+                    setStreams(streams.map(s => s.id === editingId ? { ...s, title: newTitle || s.title, url: processedUrl, type } : s));
+                    setEditingId(null);
+                } else {
+                    const newStream = { id: generateId(), url: processedUrl, title: newTitle || `Kanal ${streams.length + 1}`, type };
+                    setStreams([...streams, newStream]);
+                }
+                setNewUrl(''); setNewTitle('');
+            };
+
+            const handleEditClick = (stream) => {
+                setEditingId(stream.id);
+                setNewTitle(stream.title);
+                setNewUrl(stream.url);
+            };
+
+            const handleCancelEdit = () => {
+                setEditingId(null);
+                setNewUrl('');
+                setNewTitle('');
+            };
+
+            const handleDelete = (id) => { if(window.confirm('Silinsin mi?')) setStreams(streams.filter(s => s.id !== id)); };
+
+            return (
+                <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+                    <div className="bg-surface w-full max-w-3xl h-[85vh] rounded-xl border border-white/10 shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
+                        <div className="p-5 border-b border-white/5 flex justify-between items-center bg-slate-900">
+                            <h2 className="text-xl font-bold text-white flex items-center gap-2 tracking-tight"><Settings className="w-5 h-5 text-primary" /> Kanal Yönetimi</h2>
+                            <Button variant="secondary" onClick={onClose} size="sm"><X className="w-4 h-4" /></Button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-5 scrollbar-thin scrollbar-thumb-slate-700">
+                            
+                            <div className={`p-5 rounded-lg border mb-6 space-y-4 transition-colors ${editingId ? 'bg-primary/5 border-primary/30' : 'bg-slate-900/50 border-white/5'}`}>
+                                <h3 className={`text-sm font-semibold flex items-center gap-2 uppercase tracking-wide ${editingId ? 'text-primary' : 'text-slate-400'}`}>
+                                    {editingId ? <><Edit2 size={16}/> Kanalı Güncelle</> : <><Plus size={16}/> Yeni Kanal Ekle</>}
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Kanal Adı (Örn: NTV)" className="bg-slate-950 border border-slate-700 rounded-md px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none text-white placeholder:text-slate-600" />
+                                    <input value={newUrl} onChange={e => setNewUrl(e.target.value)} placeholder="Link (YouTube, m3u8...)" className="bg-slate-950 border border-slate-700 rounded-md px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none text-white placeholder:text-slate-600" />
+                                </div>
+                                <div className="flex gap-2">
+                                    <Button onClick={handleSave} disabled={!newUrl} variant={editingId ? "success" : "primary"} className="flex-1">
+                                        {editingId ? "Güncellemeyi Kaydet" : "Listeye Ekle"}
+                                    </Button>
+                                    {editingId && (
+                                        <Button onClick={handleCancelEdit} variant="secondary">Vazgeç</Button>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="space-y-2 mb-6">
+                                {streams.map(s => (
+                                    <div key={s.id} className={`flex items-center justify-between p-3 rounded-lg border transition-all group ${editingId === s.id ? 'bg-primary/10 border-primary/50' : 'bg-surfaceHighlight/50 border-transparent hover:border-slate-600'}`}>
+                                        <div className="flex items-center gap-3 overflow-hidden">
+                                            <div className={`w-9 h-9 rounded-md flex items-center justify-center bg-slate-950 border border-white/5 ${s.type==='youtube'?'text-red-500':'text-blue-400'}`}>{s.type==='youtube'?<Youtube size={18}/>:<MonitorPlay size={18}/>}</div>
+                                            <div className="min-w-0"><p className="text-sm font-medium text-slate-200 truncate">{s.title}</p><p className="text-xs text-slate-500 truncate font-mono">{s.url}</p></div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Button variant="ghost" size="sm" onClick={() => handleEditClick(s)} className="text-slate-400 hover:text-white"><Edit2 size={14} /></Button>
+                                            <Button variant="danger" size="sm" onClick={() => handleDelete(s.id)}><Trash2 size={14} /></Button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="p-4 bg-red-950/20 border border-red-500/10 rounded-lg flex items-center justify-between mt-auto">
+                                <div className="text-sm">
+                                    <p className="font-bold text-red-400">Sıfırlama</p>
+                                    <p className="text-xs text-red-300/60">Tüm liste varsayılana döner.</p>
+                                </div>
+                                <Button variant="danger" onClick={onReset} size="sm"><RefreshCw className="w-3 h-3 mr-2" /> Sıfırla</Button>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [streams, setStreams] = useState(() => { try { const s = localStorage.getItem('ysn_streams'); return s ? JSON.parse(s) : DEFAULT_CHANNELS; } catch { return DEFAULT_CHANNELS; } });
+            const [assignments, setAssignments] = useState(() => { try { const s = localStorage.getItem('ysn_assignments'); return s ? JSON.parse(s) : {}; } catch { return {}; } });
+            const [gridMode, setGridMode] = useState(() => { try { return parseInt(localStorage.getItem('ysn_grid_mode')) || 4; } catch { return 4; } });
+            const [sidebarOpen, setSidebarOpen] = useState(true);
+            const [selectedSlot, setSelectedSlot] = useState(null);
+            const [showSettings, setShowSettings] = useState(false);
+            const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [isFullScreen, setIsFullScreen] = useState(false);
+
+            useEffect(() => {
+                const handleResize = () => {
+                    const mobile = window.innerWidth < 768;
+                    setIsMobile(mobile);
+                    if (mobile) setSidebarOpen(false);
+                };
+                window.addEventListener('resize', handleResize);
+                
+                const handleFullScreenChange = () => {
+                    setIsFullScreen(!!document.fullscreenElement);
+                };
+                document.addEventListener('fullscreenchange', handleFullScreenChange);
+                
+                handleResize();
+                return () => {
+                    window.removeEventListener('resize', handleResize);
+                    document.removeEventListener('fullscreenchange', handleFullScreenChange);
+                };
+            }, []);
+
+            useEffect(() => { localStorage.setItem('ysn_streams', JSON.stringify(streams)); }, [streams]);
+            useEffect(() => { localStorage.setItem('ysn_assignments', JSON.stringify(assignments)); }, [assignments]);
+            useEffect(() => { localStorage.setItem('ysn_grid_mode', gridMode); setSelectedSlot(null); }, [gridMode]);
+
+            const handleResetDefault = () => {
+                if(window.confirm('Tüm kanal listeniz silinecek ve varsayılan listeye dönülecek. Onaylıyor musunuz?')) {
+                    setStreams(DEFAULT_CHANNELS);
+                    setAssignments({});
+                    setShowSettings(false);
+                }
+            };
+            
+            const toggleFullScreen = () => {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen().catch(err => {
+                        console.log(`Error attempting to enable full-screen mode: ${err.message}`);
+                    });
+                } else {
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen();
+                    }
+                }
+            };
+
+            const getGridConfig = (mode) => {
+                if (mode === 16) return { count: 10, cols: 'grid-cols-2 md:grid-cols-4', rows: 'grid-rows-4' };
+                if (mode === 6) return { count: 6, cols: 'grid-cols-1 md:grid-cols-3', rows: 'grid-rows-3' };
+                if (mode === 25) return { count: 25, cols: 'grid-cols-2 md:grid-cols-5', rows: 'grid-rows-5' };
+                if (mode === 1) return { count: 1, cols: 'grid-cols-1', rows: 'grid-rows-1' };
+                if (mode === 9) return { count: 9, cols: 'grid-cols-2 md:grid-cols-3', rows: 'grid-rows-3' };
+                return { count: 4, cols: 'grid-cols-1 md:grid-cols-2', rows: 'grid-rows-2' };
+            };
+
+            const config = getGridConfig(gridMode);
+
+            const getSpanClass = (index, mode) => {
+                if (isMobile) return "";
+                if (mode === 6 && index === 0) return "md:col-span-2 md:row-span-2";
+                if (mode === 16) {
+                    if (index === 0 || index === 1) return "md:col-span-2 md:row-span-2";
+                }
+                return "col-span-1 row-span-1";
+            };
+
+            const handleAssign = (streamId) => {
+                if (selectedSlot !== null) {
+                    setAssignments(prev => ({ ...prev, [selectedSlot]: streamId }));
+                    setSelectedSlot(null);
+                    if (isMobile) setSidebarOpen(false);
+                } else if (!isMobile) {
+                    alert("Lütfen önce sağ taraftan boş bir ekran seçin.");
+                }
+            };
+
+            const handleDragStart = (e, id) => e.dataTransfer.setData('sid', id);
+            const handleDrop = (e, index) => {
+                const sid = e.dataTransfer.getData('sid');
+                if (sid) setAssignments(prev => ({ ...prev, [index]: sid }));
+            };
+
+            const filteredStreams = streams.filter(s => 
+                s.title.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+
+            return (
+                <div className="flex flex-col h-full bg-background text-textMain">
+                    {/* Header - Glassmorphism */}
+                    <header className="h-14 flex items-center justify-between px-4 glass z-50 shadow-lg border-b border-white/5">
+                        <div className="flex items-center gap-4">
+                            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-white/5 rounded-md text-slate-400 hover:text-white transition-colors">
+                                {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
+                            </button>
+                            <div className="flex items-center gap-3">
+                                {/* LOGO START */}
+                                <div className="flex items-center gap-2 select-none">
+                                    <div className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-blue-600 shadow-lg shadow-primary/30">
+                                        <svg className="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M4 6v12l9-6z" fill="currentColor" stroke="none" />
+                                            <path d="M16 9a3 3 0 0 1 0 6" />
+                                            <path d="M19 6a6 6 0 0 1 0 12" />
+                                        </svg>
+                                    </div>
+                                    <span className="text-xl font-bold tracking-tight text-white hidden md:block">NetVio</span>
+                                </div>
+                                {/* LOGO END */}
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 bg-slate-900/50 p-1 rounded-lg border border-white/5 overflow-x-auto no-scrollbar mask-fade">
+                            {[1, 4, 6, 9, 16, 25].map(m => (
+                                <button key={m} onClick={() => setGridMode(m)} className={`px-3 py-1 rounded-md text-xs font-semibold transition-all whitespace-nowrap ${gridMode === m ? 'bg-primary text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+                                    {m === 6 ? '6+' : m === 16 ? 'Mix' : m}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <button onClick={toggleFullScreen} className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-md transition-all" title={isFullScreen ? "Küçült" : "Tam Ekran"}>
+                                {isFullScreen ? <Minimize size={20} /> : <Maximize size={20} />}
+                            </button>
+                            <div className="h-6 w-px bg-white/10 mx-1"></div>
+                            <button onClick={() => setAssignments({})} className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-all" title="Ekranları Temizle"><Trash2 size={18} /></button>
+                            <button onClick={() => setShowSettings(true)} className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-md transition-all" title="Ayarlar"><Settings size={20} /></button>
+                        </div>
+                    </header>
+
+                    <div className="flex flex-1 overflow-hidden relative">
+                        {/* Sidebar */}
+                        <div className={`absolute md:relative z-40 h-full bg-surface border-r border-white/5 transition-all duration-300 ease-in-out ${sidebarOpen ? 'w-72 translate-x-0' : 'w-0 -translate-x-full overflow-hidden'}`}>
+                            <div className="h-full flex flex-col">
+                                <div className="p-4 border-b border-white/5 bg-slate-900">
+                                    <div className="relative group">
+                                        <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-500 group-focus-within:text-primary transition-colors" />
+                                        <input 
+                                            type="text" 
+                                            placeholder="Kanal ara..." 
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                            className="w-full bg-slate-950 text-sm text-white rounded-md pl-9 pr-3 py-2 border border-slate-700 focus:border-primary focus:ring-1 focus:ring-primary outline-none placeholder:text-slate-600 transition-all" 
+                                        />
+                                    </div>
+                                    {selectedSlot !== null && <div className="mt-3 bg-primary/10 border border-primary/20 text-primary text-xs px-3 py-2 rounded-md flex items-center gap-2 animate-pulse font-medium"><Signal size={12}/> {selectedSlot + 1}. Ekran seçildi</div>}
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-2 space-y-1 scrollbar-thin scrollbar-thumb-slate-700">
+                                    {filteredStreams.map(s => (
+                                        <div key={s.id} draggable onDragStart={(e) => handleDragStart(e, s.id)} onClick={() => handleAssign(s.id)} 
+                                            className={`group flex items-center gap-3 p-3 rounded-md cursor-pointer border border-transparent transition-all hover:bg-white/5 ${selectedSlot!==null ? 'hover:border-primary/50 hover:bg-primary/5' : ''}`}>
+                                            <div className={`w-8 h-8 rounded-md flex items-center justify-center bg-slate-950 border border-white/5 shadow-sm ${s.type==='youtube'?'text-red-500':'text-blue-400'}`}>{s.type==='youtube'?<Youtube size={16}/>:<MonitorPlay size={16}/>}</div>
+                                            <span className="text-sm font-medium text-slate-300 group-hover:text-white truncate transition-colors">{s.title}</span>
+                                        </div>
+                                    ))}
+                                    {filteredStreams.length === 0 && <div className="p-4 text-center text-xs text-slate-500">Kanal bulunamadı.</div>}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Main Content */}
+                        <main className="flex-1 bg-background relative overflow-hidden flex flex-col p-2 md:p-3">
+                            <div className={`w-full h-full grid gap-2 md:gap-3 ${config.cols} ${config.rows} grid-animate`}>
+                                {Array.from({ length: config.count }).map((_, index) => {
+                                    const streamId = assignments[index];
+                                    const stream = streams.find(s => s.id === streamId);
+                                    const isSelected = selectedSlot === index;
+                                    const spanClass = getSpanClass(index, gridMode);
+
+                                    return (
+                                        <div key={index} 
+                                            className={`relative rounded-lg overflow-hidden border transition-all duration-200 ${spanClass} ${isSelected ? 'selected' : 'border-white/5 hover:border-white/20 bg-surface'}`}
+                                            onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('bg-primary/10', 'border-primary/50'); }}
+                                            onDragLeave={(e) => { e.currentTarget.classList.remove('bg-primary/10', 'border-primary/50'); }}
+                                            onDrop={(e) => { e.currentTarget.classList.remove('bg-primary/10', 'border-primary/50'); handleDrop(e, index); }}
+                                            onClick={() => setSelectedSlot(index)}
+                                        >
+                                            {stream ? (
+                                                <StreamFrame stream={stream} onRemove={() => { const n={...assignments}; delete n[index]; setAssignments(n); }} />
+                                            ) : (
+                                                <div className={`w-full h-full flex flex-col items-center justify-center cursor-pointer group transition-colors ${isSelected?'bg-surfaceHighlight':'bg-surface/50'}`}>
+                                                    <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-3 transition-all ${isSelected?'bg-primary text-white shadow-lg shadow-primary/30':'bg-slate-800 text-slate-600 group-hover:bg-slate-700 group-hover:text-slate-400'}`}>
+                                                        {isSelected ? <Check size={24} /> : <Plus size={24} />}
+                                                    </div>
+                                                    <span className={`text-xs font-bold uppercase tracking-widest ${isSelected?'text-primary':'text-slate-600 group-hover:text-slate-400'}`}>{isSelected ? 'Kanal Seçin' : `Ekran ${index+1}`}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </main>
+                        
+                        {isMobile && sidebarOpen && <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-30" onClick={() => setSidebarOpen(false)} />}
+                    </div>
+
+                    {showSettings && <SettingsModal streams={streams} setStreams={setStreams} onClose={() => setShowSettings(false)} onReset={handleResetDefault} />}
+                </div>
+            );
+        };
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
